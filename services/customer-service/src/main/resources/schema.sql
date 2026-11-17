@@ -1,0 +1,3 @@
+CREATE TABLE IF NOT EXISTS customers(id BIGINT PRIMARY KEY, name VARCHAR(100) NOT NULL, balance BIGINT NOT NULL CHECK(balance>=0));
+CREATE TABLE IF NOT EXISTS wallet_payments(order_id UUID PRIMARY KEY, customer_id BIGINT NOT NULL REFERENCES customers(id), amount BIGINT NOT NULL CHECK(amount>0), refunded BOOLEAN NOT NULL DEFAULT FALSE);
+INSERT INTO customers(id,name,balance) SELECT 1,'Demo customer',10000000 WHERE NOT EXISTS(SELECT 1 FROM customers WHERE id=1);

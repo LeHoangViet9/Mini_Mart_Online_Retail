@@ -1,0 +1,6 @@
+# Maven build output (root and service modules)
+target/
+**/target/
+.tools/
+deploy/.env
+__pycache__/

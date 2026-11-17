@@ -1,0 +1,68 @@
+name: minimart
+x-business: &business
+  restart: unless-stopped
+  networks: [backend]
+  depends_on:
+    postgres:
+      condition: service_healthy
+services:
+  postgres:
+    image: postgres:17.7-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: minimart_admin
+      POSTGRES_DB: minimart_admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_admin_change_me}
+      CATALOG_DB_PASSWORD: ${CATALOG_DB_PASSWORD:-local_catalog_change_me}
+      CUSTOMER_DB_PASSWORD: ${CUSTOMER_DB_PASSWORD:-local_customer_change_me}
+      ORDER_DB_PASSWORD: ${ORDER_DB_PASSWORD:-local_order_change_me}
+      SHIPPING_DB_PASSWORD: ${SHIPPING_DB_PASSWORD:-local_shipping_change_me}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U minimart_admin -d minimart_admin && test -f /var/lib/postgresql/data/PG_VERSION']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  catalog-service:
+    <<: *business
+    build: {context: .., dockerfile: services/catalog-service/Dockerfile}
+    environment:
+      DB_USER: catalog
+      DB_PASSWORD: ${CATALOG_DB_PASSWORD:-local_catalog_change_me}
+  customer-service:
+    <<: *business
+    build: {context: .., dockerfile: services/customer-service/Dockerfile}
+    environment:
+      DB_USER: customer
+      DB_PASSWORD: ${CUSTOMER_DB_PASSWORD:-local_customer_change_me}
+  order-service:
+    <<: *business
+    build: {context: .., dockerfile: services/order-service/Dockerfile}
+    environment:
+      DB_USER: orders
+      DB_PASSWORD: ${ORDER_DB_PASSWORD:-local_order_change_me}
+  shipping-service:
+    <<: *business
+    build: {context: .., dockerfile: services/shipping-service/Dockerfile}
+    environment:
+      DB_USER: shipping
+      DB_PASSWORD: ${SHIPPING_DB_PASSWORD:-local_shipping_change_me}
+  gateway:
+    build: {context: .., dockerfile: services/gateway/Dockerfile}
+    restart: unless-stopped
+    ports: ['${GATEWAY_PORT:-8080}:8080']
+    networks: [edge, backend]
+    depends_on:
+      - catalog-service
+      - customer-service
+      - order-service
+      - shipping-service
+networks:
+  edge: {}
+  backend:
+    internal: true
+volumes:
+  postgres-data: {}
