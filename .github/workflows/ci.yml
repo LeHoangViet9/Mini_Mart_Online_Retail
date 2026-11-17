@@ -45,7 +45,7 @@ jobs:
               --file "services/${service}/Dockerfile" \
               --tag "${image}:${GITHUB_SHA}" \
               --tag "${image}:latest" \
-              "services/${service}"
+                    "."
             docker push "${image}:${GITHUB_SHA}"
             docker push "${image}:latest"
           done
