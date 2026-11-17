@@ -1,4 +1,4 @@
-name: MiniMart CI
+name: MiniMart CI and GHCR
 
 on:
   push:
@@ -6,8 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  build:
+  build-test-publish:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,3 +27,25 @@ jobs:
 
       - name: Build and test all services
         run: mvn -B clean verify
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push five service images
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          for service in catalog-service customer-service gateway order-service shipping-service; do
+            image="ghcr.io/lehoangviet9/minimart-${service}"
+            docker build \
+              --file "services/${service}/Dockerfile" \
+              --tag "${image}:${GITHUB_SHA}" \
+              --tag "${image}:latest" \
+              "services/${service}"
+            docker push "${image}:${GITHUB_SHA}"
+            docker push "${image}:latest"
+          done
