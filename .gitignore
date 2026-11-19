@@ -4,3 +4,13 @@ target/
 .tools/
 deploy/.env
 __pycache__/
+**/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/npm-cache/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.aws/

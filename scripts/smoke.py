@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--local', action='store_true')
 parser.add_argument('--postgres', action='store_true', help='Local apps use four databases at localhost:15432; passwords from DB_TEST_PASSWORD')
-parser.add_argument('--base', default='http://localhost:8080')
+parser.add_argument('--base', default='http://localhost')
 args = parser.parse_args()
 base = 'http://localhost:18080' if args.local else args.base
 processes, files, logs = [], [], {}

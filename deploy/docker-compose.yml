@@ -6,6 +6,15 @@ x-business: &business
     postgres:
       condition: service_healthy
 services:
+  frontend:
+    build: {context: ../frontend, dockerfile: Dockerfile}
+    restart: unless-stopped
+    ports: ['${HTTP_PORT:-80}:80']
+    environment:
+      API_URL: ${FRONTEND_API_URL:-http://gateway:8080}
+    networks: [edge]
+    depends_on:
+      - gateway
   postgres:
     image: postgres:17.7-alpine
     restart: unless-stopped
@@ -53,7 +62,6 @@ services:
   gateway:
     build: {context: .., dockerfile: services/gateway/Dockerfile}
     restart: unless-stopped
-    ports: ['${GATEWAY_PORT:-8080}:8080']
     networks: [edge, backend]
     depends_on:
       - catalog-service
