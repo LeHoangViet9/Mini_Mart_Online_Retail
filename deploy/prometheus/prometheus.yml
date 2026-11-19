@@ -1,0 +1,27 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: [prometheus:9090]
+
+  - job_name: minimart
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: [gateway:8080]
+        labels:
+          service: gateway
+      - targets: [catalog-service:8080]
+        labels:
+          service: catalog-service
+      - targets: [customer-service:8080]
+        labels:
+          service: customer-service
+      - targets: [order-service:8080]
+        labels:
+          service: order-service
+      - targets: [shipping-service:8080]
+        labels:
+          service: shipping-service

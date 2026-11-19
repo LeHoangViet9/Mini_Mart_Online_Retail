@@ -68,9 +68,47 @@ services:
       - customer-service
       - order-service
       - shipping-service
+  prometheus:
+    image: prom/prometheus:v3.16.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    ports:
+      - '${MONITORING_BIND_ADDRESS:-127.0.0.1}:9090:9090'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks: [backend, monitoring]
+    depends_on:
+      - gateway
+      - catalog-service
+      - customer-service
+      - order-service
+      - shipping-service
+  grafana:
+    image: grafana/grafana:13.3.1
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in deploy/.env before starting Grafana}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+    ports:
+      - '${MONITORING_BIND_ADDRESS:-127.0.0.1}:3000:3000'
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks: [backend, monitoring]
+    depends_on:
+      - prometheus
 networks:
   edge: {}
   backend:
     internal: true
+  monitoring: {}
 volumes:
   postgres-data: {}
+  prometheus-data: {}
+  grafana-data: {}
