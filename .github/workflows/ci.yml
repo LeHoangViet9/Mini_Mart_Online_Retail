@@ -8,11 +8,11 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  build-test-publish:
+  verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Checkout source
@@ -28,8 +28,44 @@ jobs:
       - name: Build and test all services
         run: mvn -B clean verify
 
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Test frontend with mocked HTTP
+        working-directory: frontend
+        run: npm test
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build isolated H2 test applications
+        run: mvn -B -Plocal-test clean package
+
+      - name: Check existing business flow on local applications
+        run: python3 scripts/smoke.py --local
+
+  publish:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
       - name: Log in to GitHub Container Registry
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -37,7 +73,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push five service images
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           for service in catalog-service customer-service gateway order-service shipping-service; do
             image="ghcr.io/lehoangviet9/minimart-${service}"
@@ -49,3 +84,14 @@ jobs:
             docker push "${image}:${GITHUB_SHA}"
             docker push "${image}:latest"
           done
+
+      - name: Build and push frontend image
+        run: |
+          image="ghcr.io/lehoangviet9/minimart-frontend"
+          docker build \
+            --file frontend/Dockerfile \
+            --tag "${image}:${GITHUB_SHA}" \
+            --tag "${image}:latest" \
+            frontend
+          docker push "${image}:${GITHUB_SHA}"
+          docker push "${image}:latest"

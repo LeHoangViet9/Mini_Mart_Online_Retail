@@ -173,6 +173,12 @@ python scripts/verify-local-postgres.py --pg-bin 'C:/Program Files/PostgreSQL/18
 
 Script tạo cluster tạm dưới `.tools/`, dùng cổng 15432 và năm ứng dụng ở 18080–18084; dừng các tiến trình nó tạo sau kiểm tra. Chi tiết backend ở [docs/PHASE1_VALIDATION.md](docs/PHASE1_VALIDATION.md). Kết quả phần web ở [docs/FRONTEND_VALIDATION.md](docs/FRONTEND_VALIDATION.md).
 
+## CI và GHCR
+
+`.github/workflows/ci.yml` chạy khi push hoặc mở PR vào `main`: `mvn -B clean verify`, `npm ci`, `npm test`, `npm run build` trong `frontend/`, sau đó `mvn -B -Plocal-test clean package` và `python3 scripts/smoke.py --local`. Smoke khởi động năm ứng dụng với H2 biệt lập trên runner, kiểm tra nghiệp vụ và hợp đồng API hiện có; không đọc `.env` hoặc gọi EC2. H2 không thay thế xác nhận PostgreSQL/Docker Compose thật.
+
+Chỉ push vào `main` và kiểm tra thành công mới xuất bản sáu image `ghcr.io/lehoangviet9/minimart-{gateway,catalog-service,customer-service,order-service,shipping-service,frontend}`, mỗi image có tag commit SHA đầy đủ và `latest`. Java dùng context gốc repository; frontend dùng context `frontend/`. Job kiểm tra chỉ có `contents: read`; job xuất bản thêm `packages: write`, đăng nhập bằng `GITHUB_TOKEN`. Workflow không tự deploy EC2.
+
 ## Triển khai EC2
 
 1. Trên EC2 có Docker Engine và Compose v2, lấy source repo tại commit đã kiểm tra. Giữ volume PostgreSQL hiện tại và bản sao lưu theo quy trình vận hành.
@@ -193,4 +199,4 @@ curl -fsS http://localhost/api/products/1
 
 ## Giới hạn hiện tại
 
-Chưa tự triển khai server, CI/registry, HTTPS, xác thực, Prometheus/Grafana server hoặc EFK. Cần bổ sung trước khi sử dụng thật. Order dùng điều phối đồng bộ, transaction cục bộ và khóa tồn kho/ví; reserve/debit/refund/release có thể gọi lặp theo order ID. Chỉ trả CANCELLED/refunded=true sau hoàn ví và trả kho thành công. Thiếu hàng/ví trả 409, dữ liệu sai trả 400. Kết quả chưa chắc chắn giữ PENDING, trả 503 và order ID. Chưa có saga bền vững, retry/outbox hoặc tự khôi phục sau crash; POST chưa có idempotency key cho client.
+CI/registry đã có workflow như trên; cần xác nhận lần chạy GitHub Actions và các tag GHCR sau khi người quản trị push. Chưa tự triển khai server, HTTPS, xác thực hoặc EFK. Cấu hình Prometheus/Grafana hiện có được mô tả trong [docs/MONITORING.md](docs/MONITORING.md), cần xác nhận trên stack thật. Order dùng điều phối đồng bộ, transaction cục bộ và khóa tồn kho/ví; reserve/debit/refund/release có thể gọi lặp theo order ID. Chỉ trả CANCELLED/refunded=true sau hoàn ví và trả kho thành công. Thiếu hàng/ví trả 409, dữ liệu sai trả 400. Kết quả chưa chắc chắn giữ PENDING, trả 503 và order ID. Chưa có saga bền vững, retry/outbox hoặc tự khôi phục sau crash; POST chưa có idempotency key cho client.

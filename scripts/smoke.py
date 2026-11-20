@@ -92,7 +92,7 @@ try:
     assert call('POST', '/api/orders', local_order)['status'] == 'CONFIRMED'
     call('POST', '/api/orders', dict(order, quantity=0), expected=400)
     call('POST', '/api/orders', dict(order, productId=99999), expected=409)
-    call('POST', '/internal/payments', {}, expected=404)
+    call('POST', '/api/internal/payments', {}, expected=404)
     call('GET', '/api/shipping/internal/shipments', expected=404)
     # Concurrent rejections must not lose wallet updates or inventory releases.
     concurrent_balance = call('GET', '/api/customers/1')['balance']

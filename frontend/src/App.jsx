@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { money, request } from './api';
+import { money, request, reasonMessage, reconciliationMessage } from './api';
 import './style.css';
 
 function ErrorMessage({ error }) {
@@ -16,6 +16,9 @@ export function App() {
   const submitting = useRef(false);
   const [result, setResult] = useState(null);
   const [orderError, setOrderError] = useState(null);
+  const [knownOrderId, setKnownOrderId] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const checkingOrder = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -30,25 +33,36 @@ export function App() {
   function change(event) { setForm(current => ({ ...current, [event.target.name]: event.target.value })); }
   async function submit(event) {
     event.preventDefault();
-    if (submitting.current) return;
+    if (submitting.current || checkingOrder.current) return;
     if (!form.address.trim()) { setOrderError(new Error('Vui lòng nhập địa chỉ nhận hàng.')); return; }
     const numbers = ['customerId', 'productId', 'quantity'].map(key => Number(form[key]));
     if (numbers.some(value => !Number.isSafeInteger(value) || value < 1) || numbers[2] > 100) {
       setOrderError(new Error('Mã khách hàng, mã sản phẩm phải là số nguyên dương; số lượng từ 1 đến 100.')); return;
     }
     submitting.current = true;
-    setBusy(true); setResult(null); setOrderError(null);
+    setBusy(true); setResult(null); setOrderError(null); setKnownOrderId(null);
     try {
       const data = await request('/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, customerId: numbers[0], productId: numbers[1], quantity: numbers[2], address: form.address.trim() }) });
       setResult(data);
+      setKnownOrderId(data.id);
+      setReload(value => value + 1);
+    } catch (error) { setOrderError(error); setKnownOrderId(error.orderId || null); }
+    finally { submitting.current = false; setBusy(false); }
+  }
+  async function checkOrder() {
+    if (!knownOrderId || checkingOrder.current || submitting.current) return;
+    checkingOrder.current = true;
+    setChecking(true); setOrderError(null);
+    try {
+      setResult(await request(`/orders/${encodeURIComponent(knownOrderId)}`));
       setReload(value => value + 1);
     } catch (error) { setOrderError(error); }
-    finally { submitting.current = false; setBusy(false); }
+    finally { checkingOrder.current = false; setChecking(false); }
   }
   const estimated = product && Number(form.productId) === product.id && Number(form.quantity) >= 1 && Number(form.quantity) <= 100;
 
   return <>
-    <header><a className="brand" href="/" aria-label="MiniMart trang chủ"><span className="brand-icon">m<span>•</span></span>MiniMart<span className="brand-dot">.</span></a><span className="header-note">Cửa hàng nhỏ, tiện ích mỗi ngày</span><a className="header-link" href="#order">Đặt hàng <span aria-hidden="true">↗</span></a></header>
+    <header><a className="brand" href="/" title="MiniMart trang chủ"><span className="brand-icon" aria-hidden="true">m<span>•</span></span>MiniMart<span className="brand-dot" aria-hidden="true">.</span></a><span className="header-note">Cửa hàng nhỏ, tiện ích mỗi ngày</span><a className="header-link" href="#order">Đặt hàng <span aria-hidden="true">↗</span></a></header>
     <main>
       <section className="intro"><span className="eyebrow"><i /> MUA SẮM THẬT ĐƠN GIẢN</span><h1>Món quen mỗi ngày.<br /><span>Đặt ngay trong vài bước.</span></h1><p>Chọn sản phẩm, điền thông tin và để MiniMart lo phần còn lại.</p></section>
       <div className="shop-grid">
@@ -59,18 +73,30 @@ export function App() {
             <div className="product-info"><span className="eyebrow muted">SẢN PHẨM #{product.id}</span><h3>{product.name}</h3><div className="price-row"><strong>{money(product.price)}</strong><span>/ sản phẩm</span></div><div className="stock-row"><span>Tồn kho hiện tại</span><strong>{product.stock.toLocaleString('vi-VN')} sản phẩm</strong></div></div>
           </article>}
           <div className="how-it-works"><h3>Từ cửa hàng đến tay bạn</h3><ol><li><span>01</span>Chọn sản phẩm</li><li><span>02</span>Điền địa chỉ</li><li><span>03</span>Nhận kết quả</li></ol></div>
+          <p className="delivery-note">Quy trình backend: tạo đơn PENDING → kiểm tra và giữ kho → trừ ví → lập phiếu giao hoặc từ chối → hoàn tiền nếu từ chối giao → kết đơn CONFIRMED hoặc CANCELLED. Frontend chỉ gửi yêu cầu đặt hàng và hiển thị kết quả.</p>
         </section>
         <section className="order-card" id="order" aria-labelledby="order-title"><div className="order-heading"><span className="eyebrow muted">CHỈ VÀI THÔNG TIN</span><h2 id="order-title">Đặt hàng của bạn</h2><p>Thông tin có dấu * là bắt buộc.</p></div>
-          <form onSubmit={submit} aria-busy={busy}><fieldset disabled={busy}>
+          <form onSubmit={submit} aria-busy={busy}><fieldset disabled={busy || checking}>
             <div className="form-row"><label>Mã khách hàng *<input name="customerId" type="number" min="1" max="9007199254740991" step="1" required value={form.customerId} onChange={change} /><small>Tài khoản demo: 1</small></label><label>Mã sản phẩm *<input name="productId" type="number" min="1" max="9007199254740991" step="1" required value={form.productId} onChange={change} /><small>Sản phẩm đang giới thiệu: 1</small></label></div>
             <label>Số lượng *<input name="quantity" type="number" min="1" max="100" step="1" required value={form.quantity} onChange={change} /><small>Từ 1 đến 100 sản phẩm mỗi đơn</small></label>
             <label>Địa chỉ nhận hàng *<textarea name="address" autoComplete="street-address" maxLength="300" required rows="3" placeholder="Số nhà, tên đường, phường/xã, tỉnh/thành phố" value={form.address} onChange={change} /></label>
             <label>Khu vực giao hàng *<select name="zone" value={form.zone} onChange={change}><option value="LOCAL">Nội vùng (LOCAL)</option><option value="OUTSIDE">Ngoài vùng (OUTSIDE)</option></select></label>
             <p className="delivery-note">Ngoài vùng có thể bị từ chối tùy cấu hình giao hàng. Kết quả và trạng thái hoàn tiền sẽ hiển thị bên dưới.</p>
             <div className="estimate"><span>Tạm tính</span><strong>{estimated ? money(product.price * Number(form.quantity)) : 'Theo sản phẩm đã chọn'}</strong></div><p className="estimate-note">Số tiền chính thức được xác nhận khi tạo đơn.</p>
-            <button className="submit-button" type="submit" disabled={busy}>{busy ? 'Đang xử lý đơn hàng…' : 'Đặt hàng'}<span aria-hidden="true">{busy ? '◌' : '→'}</span></button>
+            <button className="submit-button" type="submit" disabled={busy || checking}>{busy ? 'Đang xử lý đơn hàng…' : 'Đặt hàng'}<span aria-hidden="true">{busy ? '◌' : '→'}</span></button>
           </fieldset></form>
-          <div className="results" aria-live="polite" aria-atomic="true">{orderError && <ErrorMessage error={orderError} />}{result && <div className={`notice ${result.status === 'CONFIRMED' ? 'success' : 'warning'}`}><strong>{result.status === 'CONFIRMED' ? 'Đặt hàng thành công' : result.status === 'CANCELLED' ? 'Đơn hàng đã bị hủy' : 'Đơn hàng đang chờ xử lý'}</strong><dl><dt>Trạng thái</dt><dd>{result.status}</dd><dt>Mã đơn</dt><dd>{result.id}</dd><dt>Số tiền</dt><dd>{money(result.amount)}</dd><dt>Hoàn tiền (refunded)</dt><dd>{result.refunded ? 'Đã hoàn tiền (true)' : 'Không (false)'}</dd>{result.reason && <><dt>Lý do (reason)</dt><dd>{result.reason === 'OUTSIDE_DELIVERY_ZONE' ? 'Địa chỉ ngoài vùng giao hàng (OUTSIDE_DELIVERY_ZONE)' : result.reason}</dd></>}{result.traceId && <><dt>Mã tra cứu</dt><dd>{result.traceId}</dd></>}</dl></div>}</div>
+          <div className="results" aria-live="polite" aria-atomic="true">
+            {busy && <p role="status">Đang gửi yêu cầu đặt hàng, vui lòng chờ kết quả từ backend…</p>}
+            {checking && <p role="status">Đang kiểm tra đơn hàng…</p>}
+            {orderError && <ErrorMessage error={orderError} />}
+            {result && <div className={`notice ${result.status === 'CONFIRMED' ? 'success' : 'warning'}`}><strong>{result.status === 'CONFIRMED' ? 'Đặt hàng thành công' : result.status === 'CANCELLED' ? 'Đơn hàng đã bị hủy' : 'Đơn hàng cần đối soát'}</strong>
+              {result.status === 'PENDING' && <p>{reconciliationMessage}</p>}
+              <dl><dt>Trạng thái</dt><dd>{result.status}</dd><dt>Mã đơn</dt><dd>{result.id}</dd><dt>Số tiền</dt><dd>{typeof result.amount === 'number' ? money(result.amount) : 'Chưa được cung cấp'}</dd><dt>Hoàn tiền (refunded)</dt><dd>{result.refunded === true ? 'Đã hoàn tiền (true)' : result.refunded === false ? 'Không (false)' : 'Chưa được cung cấp'}</dd>
+                {result.status === 'CANCELLED' && <><dt>Lý do (reason)</dt><dd>{result.reason ? `${reasonMessage(result.reason) || ''} (${result.reason})` : 'Backend chưa cung cấp lý do hủy.'}</dd></>}
+                {result.traceId && <><dt>Mã tra cứu</dt><dd>{result.traceId}</dd></>}
+              </dl></div>}
+          </div>
+          {knownOrderId && <div className="order-lookup"><p>Mã đơn đã nhận: {knownOrderId}</p><button className="text-button" type="button" disabled={busy || checking} onClick={checkOrder}>Kiểm tra đơn hàng</button></div>}
         </section>
       </div>
     </main><footer><a className="brand" href="/">MiniMart.</a><p>Phiên bản demo · Không cần đăng nhập · Không thanh toán thật</p><span>Mua sắm nhẹ nhàng hơn.</span></footer>

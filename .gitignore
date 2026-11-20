@@ -8,6 +8,7 @@ __pycache__/
 frontend/dist/
 frontend/coverage/
 frontend/npm-cache/
+frontend-build.log
 .env
 .env.*
 !.env.example

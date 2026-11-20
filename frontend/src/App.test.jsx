@@ -79,7 +79,9 @@ describe('MiniMart', () => {
     await placeOrder();
     await screen.findByRole('alert');
     expect(screen.getByLabelText(/Địa chỉ nhận hàng/).value).toBe('12 Nguyễn Trãi');
-    expect(screen.getByText(/tránh tạo đơn trùng/)).toBeTruthy();
+    expect(screen.getByText(/liên hệ người hướng dẫn trước khi thử lại/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Kiểm tra đơn hàng' })).toBeNull();
+    expect(mock.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1);
   });
   it('blocks quantity outside the API limit', async () => {
     const mock = mockApi(null);
@@ -93,5 +95,57 @@ describe('MiniMart', () => {
     await user.click(screen.getByRole('button', { name: /^Đặt hàng/ }));
     expect(mock.mock.calls.filter(([url]) => url === '/api/orders')).toHaveLength(0);
     expect(quantity.validity.rangeOverflow).toBe(true);
+  });
+
+  it('reconciles PENDING using only GET with the received ID', async () => {
+    const id = 'ddc3818b-52db-4bad-bac2-aa47c72c6895';
+    let finish;
+    const mock = mockApi({ id, status: 'PENDING', amount: 25000, refunded: false });
+    render(<App />);
+    const user = await placeOrder();
+    await screen.findByText('Đơn hàng cần đối soát');
+    expect(screen.getByText(/liên hệ người hướng dẫn trước khi thử lại/)).toBeTruthy();
+    mock.mockImplementation(url => url === `/api/orders/${id}` ? new Promise(resolve => { finish = resolve; }) : Promise.resolve(response(product)));
+    await user.click(screen.getByRole('button', { name: 'Kiểm tra đơn hàng' }));
+    expect(screen.getByRole('button', { name: 'Kiểm tra đơn hàng' }).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: /^Đặt hàng/ }).disabled).toBe(true);
+    expect(screen.getByText('Đang kiểm tra đơn hàng…')).toBeTruthy();
+    finish(response({ id, status: 'CONFIRMED', amount: 25000, refunded: false }));
+    await screen.findByText('Đặt hàng thành công');
+    expect(mock.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1);
+    expect(mock.mock.calls.every(([url]) => ['/api/products/1', '/api/orders', `/api/orders/${id}`].includes(url))).toBe(true);
+  });
+
+  it('uses an explicit orderId in a 503 error for lookup, preserving trace', async () => {
+    const id = 'ddc3818b-52db-4bad-bac2-aa47c72c6895';
+    const mock = mockApi({ reason: `RECONCILIATION_REQUIRED orderId=${id}` }, 503);
+    render(<App />);
+    const user = await placeOrder();
+    await screen.findByRole('alert');
+    expect(screen.getByText(/Mã tra cứu: trace-demo/)).toBeTruthy();
+    mock.mockImplementation(url => url === `/api/orders/${id}` ? Promise.resolve(response({ reason: 'ORDER_NOT_FOUND' }, 404)) : Promise.resolve(response(product)));
+    await user.click(screen.getByRole('button', { name: 'Kiểm tra đơn hàng' }));
+    await screen.findByText('Không tìm thấy đơn hàng.');
+    expect(mock.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1);
+  });
+
+  it.each([502, 503, 504])('does not infer an ID or retry POST after HTTP %s', async status => {
+    const mock = mockApi({}, status);
+    render(<App />);
+    await placeOrder();
+    await screen.findByRole('alert');
+    expect(screen.getByText(/kết quả chưa xác định/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Kiểm tra đơn hàng' })).toBeNull();
+    expect(mock.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1);
+  });
+
+  it('does not present a malformed successful response as a completed order', async () => {
+    const mock = mockApi({});
+    render(<App />);
+    await placeOrder();
+    await screen.findByRole('alert');
+    expect(screen.getByText(/Phản hồi từ cửa hàng không hợp lệ/)).toBeTruthy();
+    expect(screen.queryByText('Đặt hàng thành công')).toBeNull();
+    expect(mock.mock.calls.filter(([, options]) => options.method === 'POST')).toHaveLength(1);
   });
 });
